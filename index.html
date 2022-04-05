@@ -1,22 +1,27 @@
-<!DOCTYPE html>
+<!DOCTYPE html><!--
+
+  THIS IS A PROOF OF CONCEPT AND VERY SLOW. (not optimized at all)
+
+  Reload the page if you face any issues.
+-->
 <html lang="en">
 
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/simple-peer/9.11.0/simplepeer.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/simple-peer/9.11.0/simplepeer.min.js"></script>
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/gh/kqwq/zeta4/library/meta-slim-client.js"></script> -->
+  <script src="https://cdn.jsdelivr.net/gh/kqwq/zeta4/library/client-zeta4.js"></script>
   <title>ka/place</title>
   <style>
     body {
       margin: 0;
-      background-color: black;
+      background-color: red;
     }
 
     #can {
-      background-color: #fff;
+      background-color: black;
       position: absolute;
       top: 0;
       left: 0;
@@ -52,12 +57,13 @@
       right: 10px;
       pointer-events: auto;
     }
-    @media screen and (max-width: 768px) {
+
+    @media (max-width: 768px) {
       #palette-bg span {
         display: none;
       }
     }
-      
+
 
     #palette {
 
@@ -116,10 +122,15 @@
       font-size: 8vh;
       pointer-events: none;
     }
+
     #time-left {
       border-radius: 1vh;
       background-color: rgba(247, 247, 247, 0.9);
       padding: 1vh;
+    }
+
+    #tooltip {
+      /* Implement later */
     }
   </style>
 </head>
@@ -134,12 +145,12 @@
 
   </div>
 
-  <div id="pointer">
+  <div id="pointer"></div>
 
-  </div>
+  <!-- <span id="tooltip">Loading...</span> -->
 
   <div id="timer">
-    <span id="time-left"></span>  
+    <span id="time-left"></span>
   </div>
 
 </body>
@@ -166,14 +177,12 @@
     gHeight = height
     gkhead.width = width
     gkhead.height = height
-    gCtx.fillStyle = 'green';
-    gCtx.fillRect(0, 0, gkhead.width, gkhead.height);
   }
 
 
 
   // make background green
-  gCtx.fillStyle = 'lime';
+  gCtx.fillStyle = 'gray';
   gCtx.fillRect(0, 0, gkhead.width, gkhead.height);
 
   trackTransforms(ctx);
@@ -242,11 +251,20 @@
         alert("Please select a color")
         return
       }
+      if (!canPlace) {
+        return
+      }
       let pos = ctx.transformedPoint(lastX, lastY)
       x = Math.floor(pos.x)
       y = Math.floor(pos.y)
       canPlaceAfter = new Date(new Date().getTime() + minutesPerPlacement * 60 * 1000)
-      setPixel(x, y, selectedColorIndex);
+      let payload = `^set ${x} ${y} ${selectedColorIndex}`
+      if (isConnected) {
+        send(payload)
+      } else {
+        setPixel(x, y, selectedColorIndex);
+        sendQueue.push(payload)
+      }
       redraw()
       updateTimer()
     }
@@ -439,7 +457,6 @@
 
   function testCanvas() {
     setSize(256, 256)
-    console.log(gkhead.width)
     for (let i = 0; i < gkhead.width; i++) {
       for (let j = 0; j < gkhead.height / 2; j++) {
         let colorIndex = Math.floor(Math.random() * colors.length);
@@ -448,7 +465,9 @@
     }
     redraw();
   }
-  testCanvas()
+  //testCanvas()
+
+
 
 function showHelp() {
   alert(`Inspired by r/place, click to place a pixel on the canvas. You can place pixels every ${minutesPerPlacement} minute${minutesPerPlacement == 1 ? "" : "s"}.`)
@@ -472,5 +491,80 @@ function updateTimer() {
 setInterval(updateTimer, 1000);
 
 </script>
+<script type="">
+let uid = "no user"
+let isConnected = false
+let sendQueue = []
+
+function send(data) {
+  client.send(data)
+}
+function onConnect() {
+  setTimeout(() => {
+    send('!get-guest-uid') // get guest uid / implement choose-name later (maybe even KA login)
+    send("!join-game place") // join the "place" game
+  }, 500)
+  setTimeout(() => {
+    isConnected = true
+    for (let i = 0; i < sendQueue.length; i++) {
+      send(sendQueue[i])
+    }
+    send('^get-settings')
+  }, 1500);
+  
+}
+function onStatus(status) {
+  console.log(status);
+}
+
+let loadRow = 0
+
+function onRecieve(data) {
+  if (data.startsWith("^")) {
+      // Split at first occurence of " "
+      let [ command, response ] = data.slice(1).split(/ (.+)/s)
+      console.log(command, response)
+      if (command === "set-settings") {
+        let settings = JSON.parse(response)
+        minutesPerPlacement = settings.minutesPerPlacement
+        setSize(settings.gWidth, settings.gHeight)
+
+        // next, fetch the pixelArray
+        send("^get-pixels " + loadRow)
+        
+      } else if (command === "set-pixels") {
+        let pixelRow = JSON.parse(response)
+        for (let i = 0; i < pixelRow.length; i++) {
+          let colorIndex = pixelRow[i]
+          setPixel(i, loadRow, colorIndex);
+        }
+        loadRow++
+        if (loadRow < gHeight) {
+          send("^get-pixels " + loadRow)
+        }
+        redraw();
+      } else if (command === "set") {
+        let [x, y, colorIndex] = response.split(" ").map(x => parseInt(x))
+        setPixel(x, y, colorIndex);
+        redraw()
+      } 
+  } else {
+      let [firstArg, secondArg] = data.split(/ (.+)/s)
+      if (firstArg === 'set-uid') {
+        uid = secondArg
+      }
+  }
+
+}
+function leave() {
+  client.send("!leave-game")
+}
+async function connect() {
+  client = new MetaverseClient(onStatus, onConnect, onRecieve)
+  client.connectToServer()
+}
+connect()
+</script>
+<script></script>
 
 </html>
