@@ -1,8 +1,8 @@
-<!DOCTYPE html><!--
+<!DOCTYPE html>
+<!--
 
-  THIS IS A PROOF OF CONCEPT AND VERY SLOW. (not optimized at all)
+  Press restart if the canvas doesn't load within 10 seconds.
 
-  Reload the page if you face any issues.
 -->
 <html lang="en">
 
@@ -36,11 +36,12 @@
       bottom: 0;
       width: 100%;
       z-index: 20;
+      overflow: hidden;
     }
 
     #palette-bg span {
       color: white;
-      font-size: 20px;
+      font-size: 16px;
       font-weight: bold;
       position: absolute;
       font-family: 'Courier New', Courier, monospace;
@@ -155,8 +156,10 @@
 
 </body>
 <script type="">
+{
+
   let canPlace = true
-  let minutesPerPlacement = 1
+  let minutesPerPlacement = 0.5
   let canPlaceAfter = new Date()
   let gWidth = 256
   let gHeight = 256
@@ -172,7 +175,6 @@
 
   // set size to size x size
   function setSize(width, height) {
-    console.log(gkhead.width)
     gWidth = width
     gHeight = height
     gkhead.width = width
@@ -490,8 +492,6 @@ function updateTimer() {
 }
 setInterval(updateTimer, 1000);
 
-</script>
-<script type="">
 let uid = "no user"
 let isConnected = false
 let sendQueue = []
@@ -518,31 +518,33 @@ function onStatus(status) {
 }
 
 let loadRow = 0
+let rowIncrement = 10
 
 function onRecieve(data) {
   if (data.startsWith("^")) {
       // Split at first occurence of " "
       let [ command, response ] = data.slice(1).split(/ (.+)/s)
-      console.log(command, response)
       if (command === "set-settings") {
         let settings = JSON.parse(response)
         minutesPerPlacement = settings.minutesPerPlacement
         setSize(settings.gWidth, settings.gHeight)
 
         // next, fetch the pixelArray
-        send("^get-pixels " + loadRow)
+        send("^get-pixels " + loadRow + " " + rowIncrement)
         
       } else if (command === "set-pixels") {
-        let pixelRow = JSON.parse(response)
-        for (let i = 0; i < pixelRow.length; i++) {
-          let colorIndex = pixelRow[i]
-          setPixel(i, loadRow, colorIndex);
+        let pixelRows = JSON.parse(response)
+        for (let row = 0; row < pixelRows.length; row++) {
+          for (let col = 0; col < pixelRows[row].length; col++) {
+            setPixel(col, row + loadRow, pixelRows[row][col])
+          }
         }
-        loadRow++
+   
+        loadRow += rowIncrement
         if (loadRow < gHeight) {
-          send("^get-pixels " + loadRow)
+          send("^get-pixels " + loadRow + " " + rowIncrement)
         }
-        redraw();
+        redraw(); 
       } else if (command === "set") {
         let [x, y, colorIndex] = response.split(" ").map(x => parseInt(x))
         setPixel(x, y, colorIndex);
@@ -564,6 +566,8 @@ async function connect() {
   client.connectToServer()
 }
 connect()
+
+}
 </script>
 <script></script>
 
